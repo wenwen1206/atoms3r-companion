@@ -88,7 +88,7 @@ def convert_gif_to_animation_json(gif_path, output_name, max_frames=8):
     try:
         while True:
             frame = gif.copy().convert("RGB")
-            frame = frame.resize((48, 48), Image.Resampling.LANCZOS)
+            frame = frame.resize((48, 48), Image.Resampling.NEAREST)
 
             pixel_array = []
             for y in range(48):
