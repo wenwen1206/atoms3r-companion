@@ -45,8 +45,8 @@ export default {
   }
 };
 
-function hasCJK(text) {
-  return /[一-鿿㐀-䶿　-〿＀-￯]/.test(text);
+function hasNonASCII(text) {
+  return /[^\x00-\x7F]/.test(text);
 }
 
 function getGlyphBitmap(ch) {
@@ -62,7 +62,7 @@ function getGlyphBitmap(ch) {
 function renderTextToPixels(text, fgColor = 0x00FF00, bgColor = 0x000000) {
   const canvas = Array.from({ length: 48 }, () => new Array(48).fill(bgColor));
 
-  const chars = [...text].filter(ch => fontData[ch]);
+  const chars = [...text].filter(ch => fontData[ch] || (ch.charCodeAt(0) <= 127 && ch.trim()));
   if (chars.length === 0) return null;
 
   const layouts = computeLayout(chars.length);
@@ -207,7 +207,7 @@ async function handleMCP(request, env, corsHeaders) {
           if (params.name === "draw_on_atoms3r") {
             const { display_type, content, color } = params.arguments;
 
-            if (display_type === "text" && typeof content === "string" && hasCJK(content)) {
+            if (display_type === "text" && typeof content === "string" && hasNonASCII(content)) {
               let fgColor = 0x00FF00;
               if (color) {
                 const hex = color.replace("#", "");

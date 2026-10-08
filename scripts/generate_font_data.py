@@ -6,8 +6,10 @@
 import json
 from PIL import Image, ImageDraw, ImageFont
 
-FONT_PATH = "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
+CJK_FONT_PATH = "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
+SYMBOL_FONT_PATH = "/usr/share/fonts/opentype/unifont/unifont.otf"
 FONT_SIZE = 14
+SYMBOL_FONT_SIZE = 14
 OUTPUT_PATH = "font_cjk.js"
 
 # 最常用的中文字 + 標點 + 注音符號（約 800 字，覆蓋日常 95%+）
@@ -44,16 +46,42 @@ COMMON_CHARS = (
     "因為所以但雖然如果就算即使只要除非不管無論是否已經正還將剛才終於突居總算"
     # 語氣助詞/常見網路用語
     "超很太好棒讚酷帥潮萌暈崩裂炸翻傻呆蠢笨威猛狂瘋癲狠兇狼狽慘扯誇張離譜絕"
+    # 顏文字常用符號
+    "◕◔◉●○◎◐◑◓◒☉☆★♡♥♪♫♬♩♭♯"
+    "▽△▲▼◇◆□■☐☑☒▪▫▬▭▮▯"
+    "↑↓←→↗↘↙↖↕↔⇒⇐⇑⇓"
+    "✓✗✘✔✕✖✚✦✧✩✪✫✬✭✮✯✰✱✲✳✴✵✶✷✿❀❁❂❃❄❅❆❇❈❉❊❋"
+    "☀☁☂☃☄☮☯☸☹☺☻☼☽☾♀♂♠♣♦♧♨"
+    "›‹«»‥…‧‖‗†‡※‰‱‵′″‶‷‸"
+    "⊙⊕⊗⊘⊚⊛⊜⊝⊞⊟"
+    "≈≠≡≤≥≦≧≮≯∞∴∵∷∽"
+    "α β γ δ ε ω θ π σ τ φ ψ λ μ"
+    "─━│┃┄┅┆┇┈┉┊┋╭╮╯╰"
+    "╱╲╳╴╵╶╷╸╹╺╻╼╽╾╿"
+    "。、，．：；！？「」『』（）【】〈〉《》〔〕"
+    "—～‾﹏﹋﹌·•‧"
+    "ˊˋˇˉˆ˙"
+    "⌒‿⁀ᴗᵕ˘◡ᗜᗝ"
+    "눈ᆺㅅㅂㅁㅇㅎᗒᗕᗣᗤ"
 )
 
-# 去重
-chars = list(dict.fromkeys(COMMON_CHARS))
+# 去重（過濾空白）
+chars = list(dict.fromkeys(c for c in COMMON_CHARS if not c.isspace()))
 print(f"準備渲染 {len(chars)} 個字元")
 
-font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
+cjk_font = ImageFont.truetype(CJK_FONT_PATH, FONT_SIZE)
+symbol_font = ImageFont.truetype(SYMBOL_FONT_PATH, SYMBOL_FONT_SIZE)
+
+def is_cjk(ch):
+    cp = ord(ch)
+    return (0x4E00 <= cp <= 0x9FFF or 0x3400 <= cp <= 0x4DBF
+            or 0xF900 <= cp <= 0xFAFF or 0x3000 <= cp <= 0x303F
+            or 0xFF00 <= cp <= 0xFFEF or 0x3100 <= cp <= 0x312F)
+
 font_data = {}
 
 for ch in chars:
+    font = cjk_font if is_cjk(ch) else symbol_font
     img = Image.new("1", (16, 16), 0)
     draw = ImageDraw.Draw(img)
     bbox = draw.textbbox((0, 0), ch, font=font)
