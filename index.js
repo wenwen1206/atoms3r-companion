@@ -13,7 +13,6 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // 1. AtomS3R 硬體抓取最新畫面
     if (request.method === "GET" && url.pathname === "/get") {
       const data = await env.DISPLAY_KV.get("current_display");
       if (!data) {
@@ -26,7 +25,6 @@ export default {
       });
     }
 
-    // 2. 傳統 API 寫入畫面 (/set)
     if (request.method === "POST" && url.pathname === "/set") {
       try {
         const body = await request.json();
@@ -37,7 +35,6 @@ export default {
       }
     }
 
-    // 3. 網頁版 Claude 專用 MCP 端點 (/mcp)
     if (url.pathname === "/mcp" || url.pathname === "/sse") {
       return await handleMCP(request, env, corsHeaders);
     }
@@ -50,7 +47,7 @@ async function handleMCP(request, env, corsHeaders) {
   if (request.method === "GET") {
     return new Response(JSON.stringify({
       name: "atoms3r-display-server",
-      version: "1.0.0",
+      version: "1.1.0",
       description: "AtomS3R 掌心螢幕專用 MCP 控制器"
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -67,7 +64,7 @@ async function handleMCP(request, env, corsHeaders) {
         case "initialize":
           result = {
             protocolVersion: "2024-11-05",
-            serverInfo: { name: "atoms3r-display-server", version: "1.0.0" },
+            serverInfo: { name: "atoms3r-display-server", version: "1.1.0" },
             capabilities: { tools: {} }
           };
           break;
@@ -77,20 +74,34 @@ async function handleMCP(request, env, corsHeaders) {
             tools: [
               {
                 name: "draw_on_atoms3r",
-                description: "即時繪製或傳送文字到掌心 AtomS3R 螢幕。支援 48x48 滿版像素畫。",
+                description: "即時繪製文字或小圖到 AtomS3R 螢幕。",
                 inputSchema: {
                   type: "object",
                   properties: {
                     display_type: {
                       type: "string",
                       enum: ["text", "pixel"],
-                      description: "顯示模式：'text' 為文字/顏文字，'pixel' 為 48x48 滿版點陣畫。"
+                      description: "顯示模式：'text' 為文字/顏文字，'pixel' 為 48x48 點陣畫。"
                     },
                     content: {
-                      description: "若 display_type 為 text，請輸入字串；若為 pixel，請輸入 48x48 的二維陣列（裝載十進位 RGB 色碼，如 16711680 代表紅色）。"
+                      description: "若是 text 請輸入字串；若是 pixel 請輸入 48x48 二維陣列。"
                     }
                   },
                   required: ["display_type", "content"]
+                }
+              },
+              {
+                name: "show_github_asset",
+                description: "從 GitHub Raw 網址直接讀取點陣 JSON 檔並推送到螢幕上，避免傳輸龐大陣列。",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    raw_url: {
+                      type: "string",
+                      description: "GitHub 上 JSON 檔案的 Raw 網址"
+                    }
+                  },
+                  required: ["raw_url"]
                 }
               }
             ]
@@ -103,7 +114,14 @@ async function handleMCP(request, env, corsHeaders) {
             const payload = { type: display_type, content: content };
             await env.DISPLAY_KV.put("current_display", JSON.stringify(payload));
             result = {
-              content: [{ type: "text", text: "✓ 已成功畫上 AtomS3R 掌心螢幕！" }]
+              content: [{ type: "text", text: "已成功畫上 AtomS3R 掌心螢幕！" }]
+            };
+          } else if (params.name === "show_github_asset") {
+            const fetchRes = await fetch(params.arguments.raw_url);
+            const assetData = await fetchRes.json();
+            await env.DISPLAY_KV.put("current_display", JSON.stringify(assetData));
+            result = {
+              content: [{ type: "text", text: "成功從 GitHub 抓取檔案並推送到螢幕上！" }]
             };
           } else {
             result = { error: `未知的工具: ${params.name}` };
