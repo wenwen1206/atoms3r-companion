@@ -79,6 +79,44 @@ def convert_text_to_json(text, output_name, font_path=None, font_size=12):
         json.dump({"type": "pixel", "content": pixel_array}, f)
     print(f"✓ 文字點陣已產出: {out_path}")
 
+def convert_gif_to_animation_json(gif_path, output_name, max_frames=8):
+    """將 GIF 動圖轉成動畫 JSON（每幀 48x48 色碼陣列）"""
+    gif = Image.open(gif_path)
+    frames = []
+    frame_count = 0
+
+    try:
+        while True:
+            frame = gif.copy().convert("RGB")
+            frame = frame.resize((48, 48), Image.Resampling.LANCZOS)
+
+            pixel_array = []
+            for y in range(48):
+                row = []
+                for x in range(48):
+                    r, g, b = frame.getpixel((x, y))
+                    color_int = (r << 16) + (g << 8) + b
+                    row.append(color_int)
+                pixel_array.append(row)
+
+            frames.append({"type": "pixel", "content": pixel_array})
+            frame_count += 1
+            if frame_count >= max_frames:
+                break
+            gif.seek(gif.tell() + 1)
+    except EOFError:
+        pass
+
+    # 抓 GIF 原始幀間隔（毫秒），轉成秒，最小 1 秒
+    duration_ms = gif.info.get("duration", 200)
+    interval = max(1, round(duration_ms / 1000))
+
+    out_path = f"assets/pixels/{output_name}.json"
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump({"type": "animation", "frames": frames, "interval": interval}, f)
+    print(f"✓ GIF 動畫已轉換: {out_path} ({len(frames)} 幀, 間隔 {interval} 秒)")
+
+
 # === 使用範例 ===
 if __name__ == "__main__":
     # 1. 轉文字/中文/符號
@@ -89,3 +127,7 @@ if __name__ == "__main__":
     # 2. 轉一般圖片 (如果有放入圖片)
     if os.path.exists("input_assets/cat.png"):
         convert_image_to_json("input_assets/cat.png", "img_cat")
+
+    # 3. 轉 GIF 動畫
+    if os.path.exists("input_assets/clawd_walk.gif"):
+        convert_gif_to_animation_json("input_assets/clawd_walk.gif", "anim_clawd_walk", max_frames=8)
