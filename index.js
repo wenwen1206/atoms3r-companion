@@ -74,17 +74,17 @@ async function handleMCP(request, env, corsHeaders) {
             tools: [
               {
                 name: "draw_on_atoms3r",
-                description: "即時繪製文字或小圖到 AtomS3R 螢幕。",
+                description: "即時繪製到 AtomS3R 螢幕。text 模式僅支援英文/ASCII/顏文字，中文或特殊符號必須先轉成 48x48 像素陣列再用 pixel 模式推送。",
                 inputSchema: {
                   type: "object",
                   properties: {
                     display_type: {
                       type: "string",
                       enum: ["text", "pixel"],
-                      description: "顯示模式：'text' 為文字/顏文字，'pixel' 為 48x48 點陣畫。"
+                      description: "顯示模式：'text' 僅限英文與 ASCII 顏文字，'pixel' 為 48x48 點陣畫（中文必須用此模式）。"
                     },
                     content: {
-                      description: "若是 text 請輸入字串；若是 pixel 請輸入 48x48 二維陣列。"
+                      description: "text 模式請輸入英文字串；pixel 模式請輸入 48x48 二維陣列，每個元素為 24-bit RGB 色碼整數（如 16711680 = 紅色 0xFF0000）。"
                     }
                   },
                   required: ["display_type", "content"]
@@ -92,7 +92,7 @@ async function handleMCP(request, env, corsHeaders) {
               },
               {
                 name: "show_github_asset",
-                description: "從 GitHub Raw 網址直接讀取點陣 JSON 檔並推送到螢幕上，避免傳輸龐大陣列。",
+                description: "從 GitHub Raw 網址讀取點陣 JSON 檔並推送到螢幕。僅支援公開 repo 的 Raw 連結（私有 repo 無法存取）。JSON 格式須為 {type: 'pixel', content: 48x48 二維色碼陣列}。",
                 inputSchema: {
                   type: "object",
                   properties: {
