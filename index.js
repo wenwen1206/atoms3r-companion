@@ -22,6 +22,14 @@ export default {
           headers: { "Content-Type": "application/json", ...corsHeaders }
         });
       }
+      const parsed = JSON.parse(data);
+      if (parsed.type === "animation" && Array.isArray(parsed.frames) && parsed.frames.length > 0) {
+        const interval = parsed.interval || 3;
+        const idx = Math.floor(Date.now() / (interval * 1000)) % parsed.frames.length;
+        return new Response(JSON.stringify(parsed.frames[idx]), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
       return new Response(data, {
         headers: { "Content-Type": "application/json", ...corsHeaders }
       });
@@ -194,6 +202,36 @@ async function handleMCP(request, env, corsHeaders) {
                 }
               },
               {
+                name: "animate_on_atoms3r",
+                description: "在 AtomS3R 螢幕上播放動畫。傳入多個文字幀，螢幕會自動輪播（支援中英文，每幀 1~4 字最清楚）。也可傳入 pixel 幀。",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    frames: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          display_type: { type: "string", enum: ["text", "pixel"] },
+                          content: { description: "文字或 48x48 像素陣列" }
+                        },
+                        required: ["display_type", "content"]
+                      },
+                      description: "動畫幀陣列（2~8 幀）"
+                    },
+                    interval: {
+                      type: "integer",
+                      description: "幀間隔秒數（預設 3，配合 ESP32 的 poll 頻率）"
+                    },
+                    color: {
+                      type: "string",
+                      description: "文字幀的顏色，十六進位如 '#FF6600'。預設白色 '#FFFFFF'。"
+                    }
+                  },
+                  required: ["frames"]
+                }
+              },
+              {
                 name: "add_character",
                 description: "教螢幕認識一個新字元。傳入字元與 16x16 點陣資料（16 個整數，每個代表一行的 16-bit bitmap），之後用 text 模式就能自動顯示這個字。",
                 inputSchema: {
@@ -257,6 +295,36 @@ async function handleMCP(request, env, corsHeaders) {
               await env.DISPLAY_KV.put("current_display", JSON.stringify(payload));
               result = {
                 content: [{ type: "text", text: "已成功畫上 AtomS3R 掌心螢幕！" }]
+              };
+            }
+          } else if (params.name === "animate_on_atoms3r") {
+            const { frames, interval, color } = params.arguments;
+            if (!Array.isArray(frames) || frames.length < 2) {
+              result = { content: [{ type: "text", text: "至少需要 2 幀才能做動畫。" }] };
+            } else {
+              let fgColor = 0xFFFFFF;
+              if (color) fgColor = parseInt(color.replace("#", ""), 16);
+
+              const renderedFrames = [];
+              for (const frame of frames) {
+                if (frame.display_type === "text" && typeof frame.content === "string" && hasNonASCII(frame.content)) {
+                  const pixels = await renderTextToPixels(frame.content, env, fgColor);
+                  if (pixels) {
+                    renderedFrames.push({ type: "pixel", content: pixels });
+                  }
+                } else {
+                  renderedFrames.push({ type: frame.display_type, content: frame.content });
+                }
+              }
+
+              const payload = {
+                type: "animation",
+                frames: renderedFrames,
+                interval: interval || 3
+              };
+              await env.DISPLAY_KV.put("current_display", JSON.stringify(payload));
+              result = {
+                content: [{ type: "text", text: `動畫已推送！共 ${renderedFrames.length} 幀，每 ${interval || 3} 秒切換。` }]
               };
             }
           } else if (params.name === "add_character") {
