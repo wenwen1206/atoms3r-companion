@@ -361,7 +361,7 @@ async function handleMCP(request, env, corsHeaders) {
               },
               {
                 name: "show_github_asset",
-                description: "從 GitHub Raw 網址讀取點陣 JSON 檔並推送到螢幕。僅支援公開 repo 的 Raw 連結（私有 repo 無法存取）。JSON 格式須為 {type: 'pixel', content: 48x48 二維色碼陣列}。",
+                description: "從 GitHub Raw 網址讀取點陣 JSON 檔並推送到螢幕。僅支援公開 repo 的 Raw 連結（私有 repo 無法存取）。支援 pixel、animation、roaming 格式。",
                 inputSchema: {
                   type: "object",
                   properties: {
@@ -474,12 +474,13 @@ async function handleMCP(request, env, corsHeaders) {
             }
             const assetData = await fetchRes.json();
             const isAnimation = assetData.type === "animation" && Array.isArray(assetData.frames);
-            if (!assetData.type || (!assetData.content && !isAnimation)) {
-              result = { content: [{ type: "text", text: "JSON 格式不對，需要 {type, content} 或 {type: 'animation', frames: [...]}" }] };
+            const isRoaming = assetData.type === "roaming" && assetData.sprites;
+            if (!assetData.type || (!assetData.content && !isAnimation && !isRoaming)) {
+              result = { content: [{ type: "text", text: "JSON 格式不對，需要 {type, content} 或 {type: 'animation', frames: [...]} 或 {type: 'roaming', sprites: {...}}" }] };
               break;
             }
             await env.DISPLAY_KV.put("current_display", JSON.stringify(assetData));
-            const desc = isAnimation ? `動畫（${assetData.frames.length} 幀）` : "圖片";
+            const desc = isRoaming ? "漫步模式" : isAnimation ? `動畫（${assetData.frames.length} 幀）` : "圖片";
             result = {
               content: [{ type: "text", text: `成功從 GitHub 抓取${desc}並推送到螢幕上！` }]
             };
