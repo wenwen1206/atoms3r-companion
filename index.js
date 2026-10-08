@@ -1,3 +1,5 @@
+import fontData from "./font_cjk.js";
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -43,12 +45,101 @@ export default {
   }
 };
 
+function hasCJK(text) {
+  return /[一-鿿㐀-䶿　-〿＀-￯]/.test(text);
+}
+
+function getGlyphBitmap(ch) {
+  const hex = fontData[ch];
+  if (!hex) return null;
+  const rows = [];
+  for (let i = 0; i < 16; i++) {
+    rows.push(parseInt(hex.substring(i * 4, i * 4 + 4), 16));
+  }
+  return rows;
+}
+
+function renderTextToPixels(text, fgColor = 0x00FF00, bgColor = 0x000000) {
+  const canvas = Array.from({ length: 48 }, () => new Array(48).fill(bgColor));
+
+  const chars = [...text].filter(ch => fontData[ch]);
+  if (chars.length === 0) return null;
+
+  const layouts = computeLayout(chars.length);
+
+  for (let ci = 0; ci < chars.length && ci < layouts.length; ci++) {
+    const bitmap = getGlyphBitmap(chars[ci]);
+    if (!bitmap) continue;
+    const { ox, oy, size } = layouts[ci];
+    drawGlyph(canvas, bitmap, ox, oy, size, fgColor);
+  }
+
+  return canvas;
+}
+
+function computeLayout(count) {
+  if (count === 1) {
+    return [{ ox: 0, oy: 0, size: 48 }];
+  }
+  if (count === 2) {
+    return [
+      { ox: 0, oy: 12, size: 24 },
+      { ox: 24, oy: 12, size: 24 },
+    ];
+  }
+  if (count === 3) {
+    return [
+      { ox: 0, oy: 16, size: 16 },
+      { ox: 16, oy: 16, size: 16 },
+      { ox: 32, oy: 16, size: 16 },
+    ];
+  }
+  if (count === 4) {
+    return [
+      { ox: 0, oy: 0, size: 24 },
+      { ox: 24, oy: 0, size: 24 },
+      { ox: 0, oy: 24, size: 24 },
+      { ox: 24, oy: 24, size: 24 },
+    ];
+  }
+  const positions = [];
+  const cols = 3;
+  const rows = Math.ceil(Math.min(count, 9) / cols);
+  const cellSize = 16;
+  const totalW = cols * cellSize;
+  const totalH = rows * cellSize;
+  const startX = Math.floor((48 - totalW) / 2);
+  const startY = Math.floor((48 - totalH) / 2);
+  for (let i = 0; i < Math.min(count, 9); i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    positions.push({ ox: startX + col * cellSize, oy: startY + row * cellSize, size: cellSize });
+  }
+  return positions;
+}
+
+function drawGlyph(canvas, bitmap, ox, oy, size, fgColor) {
+  for (let py = 0; py < size; py++) {
+    const srcY = Math.floor(py * 16 / size);
+    for (let px = 0; px < size; px++) {
+      const srcX = Math.floor(px * 16 / size);
+      if (bitmap[srcY] & (1 << (15 - srcX))) {
+        const cx = ox + px;
+        const cy = oy + py;
+        if (cx >= 0 && cx < 48 && cy >= 0 && cy < 48) {
+          canvas[cy][cx] = fgColor;
+        }
+      }
+    }
+  }
+}
+
 async function handleMCP(request, env, corsHeaders) {
   if (request.method === "GET") {
     return new Response(JSON.stringify({
       name: "atoms3r-display-server",
-      version: "1.1.0",
-      description: "AtomS3R 掌心螢幕專用 MCP 控制器"
+      version: "2.0.0",
+      description: "AtomS3R 掌心螢幕專用 MCP 控制器（支援中文自動渲染）"
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
@@ -64,7 +155,7 @@ async function handleMCP(request, env, corsHeaders) {
         case "initialize":
           result = {
             protocolVersion: "2024-11-05",
-            serverInfo: { name: "atoms3r-display-server", version: "1.1.0" },
+            serverInfo: { name: "atoms3r-display-server", version: "2.0.0" },
             capabilities: { tools: {} }
           };
           break;
@@ -74,17 +165,21 @@ async function handleMCP(request, env, corsHeaders) {
             tools: [
               {
                 name: "draw_on_atoms3r",
-                description: "即時繪製文字或小圖到 AtomS3R 螢幕。",
+                description: "即時繪製到 AtomS3R 掌心螢幕。支援中英文——中文會由伺服器自動渲染成點陣圖，不需要手動轉換。text 模式輸入任意文字即可；pixel 模式接受 48x48 二維色碼陣列。",
                 inputSchema: {
                   type: "object",
                   properties: {
                     display_type: {
                       type: "string",
                       enum: ["text", "pixel"],
-                      description: "顯示模式：'text' 為文字/顏文字，'pixel' 為 48x48 點陣畫。"
+                      description: "顯示模式：'text' 支援中英文（中文自動轉點陣），'pixel' 為 48x48 自訂點陣畫。"
                     },
                     content: {
-                      description: "若是 text 請輸入字串；若是 pixel 請輸入 48x48 二維陣列。"
+                      description: "text 模式輸入任意文字（中英文皆可，建議 1~4 字最清楚）；pixel 模式輸入 48x48 二維陣列，每元素為 24-bit RGB 整數。"
+                    },
+                    color: {
+                      type: "string",
+                      description: "文字顏色（僅 text 模式有效），十六進位色碼如 '#FF6600'。預設綠色 '#00FF00'。"
                     }
                   },
                   required: ["display_type", "content"]
@@ -92,7 +187,7 @@ async function handleMCP(request, env, corsHeaders) {
               },
               {
                 name: "show_github_asset",
-                description: "從 GitHub Raw 網址直接讀取點陣 JSON 檔並推送到螢幕上，避免傳輸龐大陣列。",
+                description: "從 GitHub Raw 網址讀取點陣 JSON 檔並推送到螢幕。僅支援公開 repo 的 Raw 連結（私有 repo 無法存取）。JSON 格式須為 {type: 'pixel', content: 48x48 二維色碼陣列}。",
                 inputSchema: {
                   type: "object",
                   properties: {
@@ -110,12 +205,33 @@ async function handleMCP(request, env, corsHeaders) {
 
         case "tools/call":
           if (params.name === "draw_on_atoms3r") {
-            const { display_type, content } = params.arguments;
-            const payload = { type: display_type, content: content };
-            await env.DISPLAY_KV.put("current_display", JSON.stringify(payload));
-            result = {
-              content: [{ type: "text", text: "已成功畫上 AtomS3R 掌心螢幕！" }]
-            };
+            const { display_type, content, color } = params.arguments;
+
+            if (display_type === "text" && typeof content === "string" && hasCJK(content)) {
+              let fgColor = 0x00FF00;
+              if (color) {
+                const hex = color.replace("#", "");
+                fgColor = parseInt(hex, 16);
+              }
+              const pixels = renderTextToPixels(content, fgColor);
+              if (pixels) {
+                const payload = { type: "pixel", content: pixels };
+                await env.DISPLAY_KV.put("current_display", JSON.stringify(payload));
+                result = {
+                  content: [{ type: "text", text: `已將「${content}」渲染成點陣圖並推送到螢幕！` }]
+                };
+              } else {
+                result = {
+                  content: [{ type: "text", text: `字型中找不到「${content}」的字元，請改用 pixel 模式。` }]
+                };
+              }
+            } else {
+              const payload = { type: display_type, content: content };
+              await env.DISPLAY_KV.put("current_display", JSON.stringify(payload));
+              result = {
+                content: [{ type: "text", text: "已成功畫上 AtomS3R 掌心螢幕！" }]
+              };
+            }
           } else if (params.name === "show_github_asset") {
             const fetchRes = await fetch(params.arguments.raw_url);
             if (!fetchRes.ok) {
