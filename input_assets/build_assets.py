@@ -129,6 +129,47 @@ def convert_gif_to_animation_json(gif_path, output_name, max_frames=8):
     print(f"✓ GIF 動畫已轉換: {out_path} ({len(frames)} 幀, 間隔 {interval} 秒)")
 
 
+def convert_gif_to_roaming_json(gif_path, output_name):
+    """將 GIF 轉成 roaming 格式：幀0=正面站立，幀1-3=走路"""
+    gif = Image.open(gif_path)
+    all_frames = []
+
+    try:
+        while True:
+            frame = gif.copy().convert("RGB")
+            w, h = frame.size
+            pixel_array = []
+            for y in range(h):
+                row = []
+                for x in range(w):
+                    r, g, b = frame.getpixel((x, y))
+                    row.append((r << 16) + (g << 8) + b)
+                pixel_array.append(row)
+            all_frames.append(pixel_array)
+            gif.seek(gif.tell() + 1)
+    except EOFError:
+        pass
+
+    if len(all_frames) < 2:
+        print(f"⚠ 至少需要 2 幀（1 站立 + 1 走路）")
+        return
+
+    roaming = {
+        "type": "roaming",
+        "sprite_w": w,
+        "sprite_h": h,
+        "sprites": {
+            "stand": all_frames[0],
+            "walk": all_frames[1:]
+        }
+    }
+
+    out_path = f"assets/pixels/{output_name}.json"
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(roaming, f)
+    print(f"✓ Roaming 素材已產出: {out_path} (站立+{len(all_frames)-1}幀走路, {w}x{h})")
+
+
 # === 使用範例 ===
 if __name__ == "__main__":
     # 1. 轉文字/中文/符號
@@ -143,3 +184,7 @@ if __name__ == "__main__":
     # 3. 轉 GIF 動畫
     if os.path.exists("input_assets/clawd_walk.gif"):
         convert_gif_to_animation_json("input_assets/clawd_walk.gif", "anim_clawd_walk", max_frames=8)
+
+    # 4. 轉 roaming 漫步素材（幀0=站立，幀1+=走路）
+    if os.path.exists("input_assets/clawd_walk.gif"):
+        convert_gif_to_roaming_json("input_assets/clawd_walk.gif", "roaming_clawd")

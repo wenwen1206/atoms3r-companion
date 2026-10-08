@@ -1,5 +1,69 @@
 import fontData from "./font_cjk.js";
 
+// 漫步模式：根據時間算出角色位置、方向、動作幀，渲染到 48x48 畫布
+const ROAMING_PATTERN = [
+  // [x_offset, frame (-1=站立, 0/1/2=走路幀), facing (0=右, 1=左)]
+  // 站在中央
+  [8, -1, 0], [8, -1, 0],
+  // 往右走
+  [10, 0, 0], [12, 1, 0], [14, 2, 0], [16, 0, 0],
+  // 站在右邊
+  [16, -1, 0], [16, -1, 0],
+  // 往左走
+  [14, 0, 1], [12, 1, 1], [10, 2, 1], [8, 0, 1],
+  [6, 1, 1], [4, 2, 1], [2, 0, 1], [0, 1, 1],
+  // 站在左邊
+  [0, -1, 1], [0, -1, 1],
+  // 往右走回中央
+  [2, 0, 0], [4, 1, 0], [6, 2, 0], [8, 0, 0],
+  // 站在中央（多停一下）
+  [8, -1, 0], [8, -1, 0], [8, -1, 0],
+];
+
+function renderRoamingFrame(roaming) {
+  const sw = roaming.sprite_w || 32;
+  const sh = roaming.sprite_h || 32;
+  const stand = roaming.sprites.stand;
+  const walkFrames = roaming.sprites.walk || [];
+
+  const tick = Math.floor(Date.now() / 3000) % ROAMING_PATTERN.length;
+  const [xOff, frameIdx, facing] = ROAMING_PATTERN[tick];
+
+  // 選幀：-1 是站立，否則是走路幀
+  let sprite;
+  if (frameIdx < 0 || walkFrames.length === 0) {
+    sprite = stand;
+  } else {
+    sprite = walkFrames[frameIdx % walkFrames.length];
+  }
+
+  // 48x48 黑色畫布
+  const canvas = [];
+  for (let y = 0; y < 48; y++) {
+    canvas.push(new Array(48).fill(0));
+  }
+
+  // y 固定底部對齊
+  const yOff = 48 - sh;
+
+  for (let sy = 0; sy < sh && sy < sprite.length; sy++) {
+    const row = sprite[sy];
+    if (!row) continue;
+    for (let sx = 0; sx < sw && sx < row.length; sx++) {
+      const color = row[sx];
+      if (color === 0) continue; // 黑色=透明
+      const srcX = facing === 1 ? (sw - 1 - sx) : sx;
+      const cx = xOff + srcX;
+      const cy = yOff + sy;
+      if (cx >= 0 && cx < 48 && cy >= 0 && cy < 48) {
+        canvas[cy][cx] = color;
+      }
+    }
+  }
+
+  return canvas;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -27,6 +91,12 @@ export default {
         const interval = parsed.interval || 3;
         const idx = Math.floor(Date.now() / (interval * 1000)) % parsed.frames.length;
         return new Response(JSON.stringify(parsed.frames[idx]), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+      if (parsed.type === "roaming" && parsed.sprites) {
+        const frame = renderRoamingFrame(parsed);
+        return new Response(JSON.stringify({ type: "pixel", content: frame }), {
           headers: { "Content-Type": "application/json", ...corsHeaders }
         });
       }
