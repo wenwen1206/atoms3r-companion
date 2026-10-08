@@ -90,10 +90,16 @@ def convert_gif_to_animation_json(gif_path, output_name, max_frames=8):
             frame = gif.copy().convert("RGB")
             w, h = frame.size
 
-            # 48x48 黑色畫布，原圖置中不縮放
+            # 像素藝術用 NEAREST 放大到最接近 48x48 的整數倍
+            scale = max(1, 48 // max(w, h))
+            if scale > 1:
+                frame = frame.resize((w * scale, h * scale), Image.Resampling.NEAREST)
+            sw, sh = frame.size
+
+            # 置中放在 48x48 黑色畫布上
             canvas = Image.new("RGB", (48, 48), (0, 0, 0))
-            ox = (48 - w) // 2
-            oy = (48 - h) // 2
+            ox = (48 - sw) // 2
+            oy = (48 - sh) // 2
             canvas.paste(frame, (ox, oy))
 
             pixel_array = []
