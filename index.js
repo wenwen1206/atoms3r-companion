@@ -347,13 +347,15 @@ async function handleMCP(request, env, corsHeaders) {
               break;
             }
             const assetData = await fetchRes.json();
-            if (!assetData.type || !assetData.content) {
-              result = { content: [{ type: "text", text: "JSON 格式不對，需要 {type, content}" }] };
+            const isAnimation = assetData.type === "animation" && Array.isArray(assetData.frames);
+            if (!assetData.type || (!assetData.content && !isAnimation)) {
+              result = { content: [{ type: "text", text: "JSON 格式不對，需要 {type, content} 或 {type: 'animation', frames: [...]}" }] };
               break;
             }
             await env.DISPLAY_KV.put("current_display", JSON.stringify(assetData));
+            const desc = isAnimation ? `動畫（${assetData.frames.length} 幀）` : "圖片";
             result = {
-              content: [{ type: "text", text: "成功從 GitHub 抓取檔案並推送到螢幕上！" }]
+              content: [{ type: "text", text: `成功從 GitHub 抓取${desc}並推送到螢幕上！` }]
             };
           } else {
             result = { error: `未知的工具: ${params.name}` };
