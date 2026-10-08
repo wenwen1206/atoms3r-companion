@@ -88,13 +88,19 @@ def convert_gif_to_animation_json(gif_path, output_name, max_frames=8):
     try:
         while True:
             frame = gif.copy().convert("RGB")
-            frame = frame.resize((48, 48), Image.Resampling.NEAREST)
+            w, h = frame.size
+
+            # 48x48 黑色畫布，原圖置中不縮放
+            canvas = Image.new("RGB", (48, 48), (0, 0, 0))
+            ox = (48 - w) // 2
+            oy = (48 - h) // 2
+            canvas.paste(frame, (ox, oy))
 
             pixel_array = []
             for y in range(48):
                 row = []
                 for x in range(48):
-                    r, g, b = frame.getpixel((x, y))
+                    r, g, b = canvas.getpixel((x, y))
                     color_int = (r << 16) + (g << 8) + b
                     row.append(color_int)
                 pixel_array.append(row)
