@@ -30,14 +30,28 @@ def convert_text_to_json(text, output_name, font_path=None, font_size=12):
     img = Image.new("RGB", (48, 48), color=(0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    # 載入系統字型 (若未指定，嘗試讀取微軟正黑體或預設字型)
-    try:
-        if font_path and os.path.exists(font_path):
-            font = ImageFont.truetype(font_path, font_size)
-        else:
-            # Windows 預設微軟正黑體路徑
-            font = ImageFont.truetype("msjh.ttc", font_size)
-    except:
+    font = None
+    if font_path and os.path.exists(font_path):
+        font = ImageFont.truetype(font_path, font_size)
+    else:
+        candidates = [
+            # Windows
+            "C:/Windows/Fonts/msjh.ttc",
+            "C:/Windows/Fonts/msyh.ttc",
+            "C:/Windows/Fonts/mingliu.ttc",
+            # macOS
+            "/System/Library/Fonts/PingFang.ttc",
+            "/System/Library/Fonts/STHeiti Medium.ttc",
+            # Linux
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        ]
+        for path in candidates:
+            if os.path.exists(path):
+                font = ImageFont.truetype(path, font_size)
+                break
+    if font is None:
+        print("⚠ 找不到中文字型，中文字可能無法正確顯示")
         font = ImageFont.load_default()
         
     # 計算文字位置讓它居中
