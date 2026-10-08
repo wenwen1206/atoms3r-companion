@@ -42,7 +42,7 @@ def convert_text_to_json(text, output_name, font_path=None, font_size=12):
         
     # 計算文字位置讓它居中
     bbox = draw.textbbox((0, 0), text, font=font)
-    w = bbox[2] - bbox[1]
+    w = bbox[2] - bbox[0]
     h = bbox[3] - bbox[1]
     x = (48 - w) // 2
     y = (48 - h) // 2

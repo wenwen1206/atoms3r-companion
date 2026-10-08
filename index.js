@@ -118,7 +118,15 @@ async function handleMCP(request, env, corsHeaders) {
             };
           } else if (params.name === "show_github_asset") {
             const fetchRes = await fetch(params.arguments.raw_url);
+            if (!fetchRes.ok) {
+              result = { content: [{ type: "text", text: `抓取失敗: HTTP ${fetchRes.status}` }] };
+              break;
+            }
             const assetData = await fetchRes.json();
+            if (!assetData.type || !assetData.content) {
+              result = { content: [{ type: "text", text: "JSON 格式不對，需要 {type, content}" }] };
+              break;
+            }
             await env.DISPLAY_KV.put("current_display", JSON.stringify(assetData));
             result = {
               content: [{ type: "text", text: "成功從 GitHub 抓取檔案並推送到螢幕上！" }]
