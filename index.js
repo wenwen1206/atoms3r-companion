@@ -45,13 +45,11 @@ export default {
   }
 };
 
-function hasCJK(text) {
-  return /[一-鿿㐀-䶿　-〿＀-￯]/.test(text);
+function hasNonASCII(text) {
+  return /[^\x00-\x7F]/.test(text);
 }
 
-function getGlyphBitmap(ch) {
-  const hex = fontData[ch];
-  if (!hex) return null;
+function parseHexBitmap(hex) {
   const rows = [];
   for (let i = 0; i < 16; i++) {
     rows.push(parseInt(hex.substring(i * 4, i * 4 + 4), 16));
@@ -59,19 +57,29 @@ function getGlyphBitmap(ch) {
   return rows;
 }
 
-function renderTextToPixels(text, fgColor = 0x00FF00, bgColor = 0x000000) {
+async function getGlyphBitmap(ch, env) {
+  const customHex = await env.DISPLAY_KV.get(`font:${ch}`);
+  if (customHex) return parseHexBitmap(customHex);
+  const builtinHex = fontData[ch];
+  if (builtinHex) return parseHexBitmap(builtinHex);
+  return null;
+}
+
+async function renderTextToPixels(text, env, fgColor = 0x00FF00, bgColor = 0x000000) {
+  const allChars = [...text];
+  const available = [];
+  for (const ch of allChars) {
+    const bm = await getGlyphBitmap(ch, env);
+    if (bm) available.push({ ch, bitmap: bm });
+  }
+  if (available.length === 0) return null;
+
   const canvas = Array.from({ length: 48 }, () => new Array(48).fill(bgColor));
+  const layouts = computeLayout(available.length);
 
-  const chars = [...text].filter(ch => fontData[ch]);
-  if (chars.length === 0) return null;
-
-  const layouts = computeLayout(chars.length);
-
-  for (let ci = 0; ci < chars.length && ci < layouts.length; ci++) {
-    const bitmap = getGlyphBitmap(chars[ci]);
-    if (!bitmap) continue;
+  for (let ci = 0; ci < available.length && ci < layouts.length; ci++) {
     const { ox, oy, size } = layouts[ci];
-    drawGlyph(canvas, bitmap, ox, oy, size, fgColor);
+    drawGlyph(canvas, available[ci].bitmap, ox, oy, size, fgColor);
   }
 
   return canvas;
@@ -138,8 +146,8 @@ async function handleMCP(request, env, corsHeaders) {
   if (request.method === "GET") {
     return new Response(JSON.stringify({
       name: "atoms3r-display-server",
-      version: "2.0.0",
-      description: "AtomS3R 掌心螢幕專用 MCP 控制器（支援中文自動渲染）"
+      version: "2.1.0",
+      description: "AtomS3R 掌心螢幕專用 MCP 控制器（支援中文自動渲染 + 自學新字）"
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
@@ -155,7 +163,7 @@ async function handleMCP(request, env, corsHeaders) {
         case "initialize":
           result = {
             protocolVersion: "2024-11-05",
-            serverInfo: { name: "atoms3r-display-server", version: "2.0.0" },
+            serverInfo: { name: "atoms3r-display-server", version: "2.1.0" },
             capabilities: { tools: {} }
           };
           break;
@@ -186,6 +194,25 @@ async function handleMCP(request, env, corsHeaders) {
                 }
               },
               {
+                name: "add_character",
+                description: "教螢幕認識一個新字元。傳入字元與 16x16 點陣資料（16 個整數，每個代表一行的 16-bit bitmap），之後用 text 模式就能自動顯示這個字。",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    character: {
+                      type: "string",
+                      description: "要新增的單一字元"
+                    },
+                    bitmap: {
+                      type: "array",
+                      items: { type: "integer" },
+                      description: "16 個整數的陣列，每個整數為 0~65535，代表 16x16 點陣圖的一行（bit 15 = 最左邊的像素）。"
+                    }
+                  },
+                  required: ["character", "bitmap"]
+                }
+              },
+              {
                 name: "show_github_asset",
                 description: "從 GitHub Raw 網址讀取點陣 JSON 檔並推送到螢幕。僅支援公開 repo 的 Raw 連結（私有 repo 無法存取）。JSON 格式須為 {type: 'pixel', content: 48x48 二維色碼陣列}。",
                 inputSchema: {
@@ -207,13 +234,13 @@ async function handleMCP(request, env, corsHeaders) {
           if (params.name === "draw_on_atoms3r") {
             const { display_type, content, color } = params.arguments;
 
-            if (display_type === "text" && typeof content === "string" && hasCJK(content)) {
+            if (display_type === "text" && typeof content === "string" && hasNonASCII(content)) {
               let fgColor = 0x00FF00;
               if (color) {
                 const hex = color.replace("#", "");
                 fgColor = parseInt(hex, 16);
               }
-              const pixels = renderTextToPixels(content, fgColor);
+              const pixels = await renderTextToPixels(content, env, fgColor);
               if (pixels) {
                 const payload = { type: "pixel", content: pixels };
                 await env.DISPLAY_KV.put("current_display", JSON.stringify(payload));
@@ -230,6 +257,19 @@ async function handleMCP(request, env, corsHeaders) {
               await env.DISPLAY_KV.put("current_display", JSON.stringify(payload));
               result = {
                 content: [{ type: "text", text: "已成功畫上 AtomS3R 掌心螢幕！" }]
+              };
+            }
+          } else if (params.name === "add_character") {
+            const { character, bitmap } = params.arguments;
+            if ([...character].length !== 1) {
+              result = { content: [{ type: "text", text: "請只傳入一個字元。" }] };
+            } else if (!Array.isArray(bitmap) || bitmap.length !== 16) {
+              result = { content: [{ type: "text", text: "bitmap 必須是 16 個整數的陣列。" }] };
+            } else {
+              const hex = bitmap.map(v => (v & 0xFFFF).toString(16).padStart(4, "0")).join("");
+              await env.DISPLAY_KV.put(`font:${character}`, hex);
+              result = {
+                content: [{ type: "text", text: `已學會「${character}」！之後用 text 模式就能顯示了。` }]
               };
             }
           } else if (params.name === "show_github_asset") {
