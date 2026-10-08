@@ -45,6 +45,31 @@ export default {
       }
     }
 
+    if (request.method === "POST" && url.pathname === "/upload-asset") {
+      try {
+        const body = await request.json();
+        const name = body.name;
+        const data = body.data;
+        if (!name || !data) {
+          return new Response("需要 name 和 data 欄位", { status: 400, headers: corsHeaders });
+        }
+        await env.DISPLAY_KV.put(`asset:${name}`, JSON.stringify(data));
+        return new Response(JSON.stringify({ ok: true, name }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } catch (err) {
+        return new Response("Error: " + err.message, { status: 400, headers: corsHeaders });
+      }
+    }
+
+    if (request.method === "GET" && url.pathname === "/list-assets") {
+      const list = await env.DISPLAY_KV.list({ prefix: "asset:" });
+      const names = list.keys.map(k => k.name.replace("asset:", ""));
+      return new Response(JSON.stringify({ assets: names }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
     if (url.pathname === "/mcp" || url.pathname === "/sse") {
       return await handleMCP(request, env, corsHeaders);
     }
@@ -251,6 +276,20 @@ async function handleMCP(request, env, corsHeaders) {
                 }
               },
               {
+                name: "play_asset",
+                description: "播放預先儲存的動畫或圖片。先用 /upload-asset 上傳素材（例如 Clawd 走路動畫），之後隨時用名字呼叫就能播放。用 /list-assets 查看有哪些素材。",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    name: {
+                      type: "string",
+                      description: "素材名稱（上傳時設定的 name）"
+                    }
+                  },
+                  required: ["name"]
+                }
+              },
+              {
                 name: "show_github_asset",
                 description: "從 GitHub Raw 網址讀取點陣 JSON 檔並推送到螢幕。僅支援公開 repo 的 Raw 連結（私有 repo 無法存取）。JSON 格式須為 {type: 'pixel', content: 48x48 二維色碼陣列}。",
                 inputSchema: {
@@ -338,6 +377,23 @@ async function handleMCP(request, env, corsHeaders) {
               await env.DISPLAY_KV.put(`font:${character}`, hex);
               result = {
                 content: [{ type: "text", text: `已學會「${character}」！之後用 text 模式就能顯示了。` }]
+              };
+            }
+          } else if (params.name === "play_asset") {
+            const assetName = params.arguments.name;
+            const stored = await env.DISPLAY_KV.get(`asset:${assetName}`);
+            if (!stored) {
+              const list = await env.DISPLAY_KV.list({ prefix: "asset:" });
+              const names = list.keys.map(k => k.name.replace("asset:", ""));
+              result = {
+                content: [{ type: "text", text: `找不到素材「${assetName}」。目前有的素材：${names.length ? names.join(", ") : "（還沒有）"}` }]
+              };
+            } else {
+              await env.DISPLAY_KV.put("current_display", stored);
+              const data = JSON.parse(stored);
+              const desc = data.type === "animation" ? `動畫（${data.frames?.length || "?"} 幀）` : "圖片";
+              result = {
+                content: [{ type: "text", text: `正在播放「${assetName}」${desc}！` }]
               };
             }
           } else if (params.name === "show_github_asset") {
