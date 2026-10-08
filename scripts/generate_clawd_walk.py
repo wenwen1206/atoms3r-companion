@@ -32,7 +32,7 @@ CHAR_COLORS = {
 # 幀 4: 重心右移，右腳抬
 # 幀 5: 右腳踏出
 WALK_FRAMES = [
-    # 幀 0: 站立
+    # 幀 0: 站立（兩條粗腿）
     [
         "..HBBBBBBB..",
         "..BEBBBBEB..",
@@ -40,10 +40,10 @@ WALK_FRAMES = [
         "SBBBBBBBBBBS",
         "..BBBBBBBB..",
         "..SSBBBBSS..",
-        "..B.BB.BB.B.",
-        "..D.DD.DD.D.",
+        "..BB....BB..",
+        "..DD....DD..",
     ],
-    # 幀 1: 身體微左傾，左腳抬起
+    # 幀 1: 左腳前跨
     [
         "..HBBBBBBB..",
         "..BEBBBBEB..",
@@ -51,10 +51,10 @@ WALK_FRAMES = [
         "SBBBBBBBBBBS",
         "..BBBBBBBB..",
         "..SSBBBBSS..",
-        ".B..BB.BB.B.",
-        ".D..DD.DD.D.",
+        ".BB......BB.",
+        ".DD......DD.",
     ],
-    # 幀 2: 左腳踏出，微蹲
+    # 幀 2: 最大跨步
     [
         "..HBBBBBBB..",
         "..BEBBBBEB..",
@@ -62,8 +62,8 @@ WALK_FRAMES = [
         "SBBBBBBBBBBS",
         "..BBBBBBBB..",
         "..SSBBBBSS..",
-        "B...BB.BB.B.",
-        "D...DD.DD.D.",
+        "BB........BB",
+        "DD........DD",
     ],
     # 幀 3: 回中（眨眼）
     [
@@ -73,10 +73,10 @@ WALK_FRAMES = [
         "SBBBBBBBBBBS",
         "..BBBBBBBB..",
         "..SSBBBBSS..",
-        "..B.BB.BB.B.",
-        "..D.DD.DD.D.",
+        "..BB....BB..",
+        "..DD....DD..",
     ],
-    # 幀 4: 身體微右傾，右腳抬起
+    # 幀 4: 右腳前跨
     [
         "..HBBBBBBB..",
         "..BEBBBBEB..",
@@ -84,19 +84,19 @@ WALK_FRAMES = [
         "SBBBBBBBBBBS",
         "..BBBBBBBB..",
         "..SSBBBBSS..",
-        "..B.BB.BB..B",
-        "..D.DD.DD..D",
+        ".BB......BB.",
+        ".DD......DD.",
     ],
-    # 幀 5: 右腳踏出
+    # 幀 5: 最大跨步（眨眼）
     [
         "..HBBBBBBB..",
-        "..BEBBBBEB..",
+        "..BeBBBBeB..",
         "SBBBBBBBBBBS",
         "SBBBBBBBBBBS",
         "..BBBBBBBB..",
         "..SSBBBBSS..",
-        "..B.BB..BBB.",
-        "..D.DD..DDD.",
+        "BB........BB",
+        "DD........DD",
     ],
 ]
 
