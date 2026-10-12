@@ -26,7 +26,7 @@ function renderRoamingFrame(roaming) {
   const stand = roaming.sprites.stand;
   const walkFrames = roaming.sprites.walk || [];
 
-  const tick = Math.floor(Date.now() / 3000) % ROAMING_PATTERN.length;
+  const tick = Math.floor(Date.now() / 1000) % ROAMING_PATTERN.length;
   const [xOff, frameIdx, facing] = ROAMING_PATTERN[tick];
 
   // 選幀：-1 是站立，否則是走路幀
