@@ -182,3 +182,7 @@ if __name__ == "__main__":
     # 4. 轉 roaming 漫步素材（幀0=站立，幀1+=走路）
     if os.path.exists("input_assets/clawd_walk.gif"):
         convert_gif_to_roaming_json("input_assets/clawd_walk.gif", "roaming_clawd")
+
+    # 5. 轉講話動畫素材（右下角小膽膽）
+    if os.path.exists("input_assets/clawd_talk.gif"):
+        convert_gif_to_animation_json("input_assets/clawd_talk.gif", "anim_clawd_talk", max_frames=8)
