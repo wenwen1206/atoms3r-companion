@@ -221,6 +221,6 @@ if __name__ == "__main__":
     if os.path.exists("input_assets/clawd_walk.gif"):
         convert_gif_to_roaming_json("input_assets/clawd_walk.gif", "roaming_clawd")
 
-    # 5. 轉講話動畫素材（縮到 16x16，右下角小膽膽）
+    # 5. 轉講話動畫素材（保持 32x32 原大小，右下角膽膽）
     if os.path.exists("input_assets/clawd_talk.gif"):
-        convert_gif_to_talk_json("input_assets/clawd_talk.gif", "anim_clawd_talk", target_size=16)
+        convert_gif_to_talk_json("input_assets/clawd_talk.gif", "anim_clawd_talk", target_size=32)
