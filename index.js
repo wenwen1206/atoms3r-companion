@@ -64,6 +64,43 @@ function renderRoamingFrame(roaming) {
   return canvas;
 }
 
+function renderTalkingFrame(talking) {
+  const textPixels = talking.text_pixels;
+  const talkFrames = talking.talk_frames;
+  const tw = talking.talk_w || 32;
+  const th = talking.talk_h || 32;
+
+  const canvas = [];
+  for (let y = 0; y < 48; y++) {
+    const row = [];
+    for (let x = 0; x < 48; x++) {
+      row.push(textPixels[y] ? (textPixels[y][x] || 0) : 0);
+    }
+    canvas.push(row);
+  }
+
+  const idx = Math.floor(Date.now() / 500) % talkFrames.length;
+  const sprite = talkFrames[idx];
+  const ox = 48 - tw;
+  const oy = 48 - th;
+
+  for (let sy = 0; sy < th && sy < sprite.length; sy++) {
+    const row = sprite[sy];
+    if (!row) continue;
+    for (let sx = 0; sx < tw && sx < row.length; sx++) {
+      const color = row[sx];
+      if (color === 0) continue;
+      const cx = ox + sx;
+      const cy = oy + sy;
+      if (cx >= 0 && cx < 48 && cy >= 0 && cy < 48) {
+        canvas[cy][cx] = color;
+      }
+    }
+  }
+
+  return canvas;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -96,6 +133,12 @@ export default {
       }
       if (parsed.type === "roaming" && parsed.sprites) {
         const frame = renderRoamingFrame(parsed);
+        return new Response(JSON.stringify({ type: "pixel", content: frame }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+      if (parsed.type === "talking" && parsed.text_pixels && parsed.talk_frames) {
+        const frame = renderTalkingFrame(parsed);
         return new Response(JSON.stringify({ type: "pixel", content: frame }), {
           headers: { "Content-Type": "application/json", ...corsHeaders }
         });
@@ -389,8 +432,21 @@ async function handleMCP(request, env, corsHeaders) {
               }
               const pixels = await renderTextToPixels(content, env, fgColor);
               if (pixels) {
-                const payload = { type: "pixel", content: pixels };
-                await env.DISPLAY_KV.put("current_display", JSON.stringify(payload));
+                const talkAsset = await env.DISPLAY_KV.get("asset:clawd_talk");
+                if (talkAsset) {
+                  const talkData = JSON.parse(talkAsset);
+                  const talkFrames = (talkData.frames || []).map(f => f.content);
+                  const payload = {
+                    type: "talking",
+                    text_pixels: pixels,
+                    talk_frames: talkFrames,
+                    talk_w: 32,
+                    talk_h: 32,
+                  };
+                  await env.DISPLAY_KV.put("current_display", JSON.stringify(payload));
+                } else {
+                  await env.DISPLAY_KV.put("current_display", JSON.stringify({ type: "pixel", content: pixels }));
+                }
                 result = {
                   content: [{ type: "text", text: `已將「${content}」渲染成點陣圖並推送到螢幕！` }]
                 };
