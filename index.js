@@ -415,6 +415,20 @@ async function handleMCP(request, env, corsHeaders) {
                   },
                   required: ["raw_url"]
                 }
+              },
+              {
+                name: "play_repo_asset",
+                description: "用檔名直接播放 repo 裡 assets/pixels/ 的素材。不用給完整 URL，只要給檔名（不含 .json）就好。支援 pixel、animation、roaming 格式。",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    name: {
+                      type: "string",
+                      description: "素材檔名（不含 .json），例如 anim_clawd_talk、roaming_clawd"
+                    }
+                  },
+                  required: ["name"]
+                }
               }
             ]
           };
@@ -539,6 +553,26 @@ async function handleMCP(request, env, corsHeaders) {
             const desc = isRoaming ? "漫步模式" : isAnimation ? `動畫（${assetData.frames.length} 幀）` : "圖片";
             result = {
               content: [{ type: "text", text: `成功從 GitHub 抓取${desc}並推送到螢幕上！` }]
+            };
+          } else if (params.name === "play_repo_asset") {
+            const assetName = params.arguments.name;
+            const rawUrl = `https://raw.githubusercontent.com/wenwen1206/atoms3r-companion/main/assets/pixels/${assetName}.json`;
+            const fetchRes = await fetch(rawUrl);
+            if (!fetchRes.ok) {
+              result = { content: [{ type: "text", text: `找不到素材「${assetName}」（HTTP ${fetchRes.status}）。確認檔案有推到 main 上的 assets/pixels/ 嗎？` }] };
+              break;
+            }
+            const assetData = await fetchRes.json();
+            const isAnimation = assetData.type === "animation" && Array.isArray(assetData.frames);
+            const isRoaming = assetData.type === "roaming" && assetData.sprites;
+            if (!assetData.type || (!assetData.content && !isAnimation && !isRoaming)) {
+              result = { content: [{ type: "text", text: `「${assetName}」的 JSON 格式不對。` }] };
+              break;
+            }
+            await env.DISPLAY_KV.put("current_display", JSON.stringify(assetData));
+            const desc = isRoaming ? "漫步模式" : isAnimation ? `動畫（${assetData.frames.length} 幀）` : "圖片";
+            result = {
+              content: [{ type: "text", text: `正在播放「${assetName}」${desc}！` }]
             };
           } else {
             result = { error: `未知的工具: ${params.name}` };
