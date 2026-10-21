@@ -123,6 +123,44 @@ def convert_gif_to_animation_json(gif_path, output_name, max_frames=8):
     print(f"✓ GIF 動畫已轉換: {out_path} ({len(frames)} 幀, 間隔 {interval} 秒)")
 
 
+def convert_gif_to_talk_json(gif_path, output_name, target_size=16, max_frames=8):
+    """將 GIF 轉成講話動畫素材，縮放到 target_size x target_size"""
+    gif = Image.open(gif_path)
+    frames = []
+    frame_count = 0
+
+    try:
+        while True:
+            frame = gif.copy().convert("RGB")
+            frame = frame.resize((target_size, target_size), Image.Resampling.NEAREST)
+
+            pixel_array = []
+            for y in range(target_size):
+                row = []
+                for x in range(target_size):
+                    r, g, b = frame.getpixel((x, y))
+                    row.append((r << 16) + (g << 8) + b)
+                pixel_array.append(row)
+
+            frames.append({"type": "pixel", "content": pixel_array})
+            frame_count += 1
+            if frame_count >= max_frames:
+                break
+            gif.seek(gif.tell() + 1)
+    except EOFError:
+        pass
+
+    out_path = f"assets/pixels/{output_name}.json"
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump({
+            "type": "animation",
+            "frames": frames,
+            "interval": 1,
+            "sprite_size": target_size
+        }, f)
+    print(f"✓ 講話動畫已產出: {out_path} ({len(frames)} 幀, {target_size}x{target_size})")
+
+
 def convert_gif_to_roaming_json(gif_path, output_name):
     """將 GIF 轉成 roaming 格式：幀0=正面站立，幀1-3=走路"""
     gif = Image.open(gif_path)
@@ -183,6 +221,6 @@ if __name__ == "__main__":
     if os.path.exists("input_assets/clawd_walk.gif"):
         convert_gif_to_roaming_json("input_assets/clawd_walk.gif", "roaming_clawd")
 
-    # 5. 轉講話動畫素材（右下角小膽膽）
+    # 5. 轉講話動畫素材（縮到 16x16，右下角小膽膽）
     if os.path.exists("input_assets/clawd_talk.gif"):
-        convert_gif_to_animation_json("input_assets/clawd_talk.gif", "anim_clawd_talk", max_frames=8)
+        convert_gif_to_talk_json("input_assets/clawd_talk.gif", "anim_clawd_talk", target_size=16)

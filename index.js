@@ -67,8 +67,8 @@ function renderRoamingFrame(roaming) {
 function renderTalkingFrame(talking) {
   const textPixels = talking.text_pixels;
   const talkFrames = talking.talk_frames;
-  const tw = talking.talk_w || 32;
-  const th = talking.talk_h || 32;
+  const tw = talking.talk_w || 16;
+  const th = talking.talk_h || 16;
 
   const canvas = [];
   for (let y = 0; y < 48; y++) {
@@ -440,8 +440,8 @@ async function handleMCP(request, env, corsHeaders) {
                     type: "talking",
                     text_pixels: pixels,
                     talk_frames: talkFrames,
-                    talk_w: 32,
-                    talk_h: 32,
+                    talk_w: 16,
+                    talk_h: 16,
                   };
                   await env.DISPLAY_KV.put("current_display", JSON.stringify(payload));
                 } else {
