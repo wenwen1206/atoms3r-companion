@@ -79,7 +79,7 @@ function renderTalkingFrame(talking) {
     canvas.push(row);
   }
 
-  const idx = Math.floor(Date.now() / 500) % talkFrames.length;
+  const idx = Math.floor(Date.now() / 600) % talkFrames.length;
   const sprite = talkFrames[idx];
   const ox = 48 - tw;
   const oy = 48 - th;
