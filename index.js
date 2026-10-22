@@ -70,7 +70,9 @@ function renderRoamingFrame(roaming, equips) {
       const ih = item.h || item.pixels.length;
       const ax = facing === 1 ? (sw - 1 - anchor.x) : anchor.x;
       const itemX = xOff + ax - Math.floor(iw / 2);
-      const itemY = yOff + anchor.y - ih;
+      const itemY = slot === "hand"
+        ? yOff + anchor.y - Math.floor(ih / 2)
+        : yOff + anchor.y - ih;
 
       for (let iy = 0; iy < ih && iy < item.pixels.length; iy++) {
         const row = item.pixels[iy];
