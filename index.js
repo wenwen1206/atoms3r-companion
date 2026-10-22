@@ -446,7 +446,15 @@ async function handleMCP(request, env, corsHeaders) {
               }
               const pixels = await renderTextToPixels(content, env, fgColor);
               if (pixels) {
-                const talkAsset = await env.DISPLAY_KV.get("asset:clawd_talk");
+                let talkAsset = await env.DISPLAY_KV.get("asset:clawd_talk");
+                if (!talkAsset) {
+                  const talkUrl = "https://raw.githubusercontent.com/wenwen1206/atoms3r-companion/main/assets/pixels/anim_clawd_talk.json";
+                  const talkRes = await fetch(talkUrl);
+                  if (talkRes.ok) {
+                    talkAsset = await talkRes.text();
+                    await env.DISPLAY_KV.put("asset:clawd_talk", talkAsset);
+                  }
+                }
                 if (talkAsset) {
                   const talkData = JSON.parse(talkAsset);
                   const talkFrames = (talkData.frames || []).map(f => f.content);
