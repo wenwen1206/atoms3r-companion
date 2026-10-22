@@ -139,7 +139,10 @@ def convert_gif_to_talk_json(gif_path, output_name, target_size=16, max_frames=8
                 row = []
                 for x in range(target_size):
                     r, g, b = frame.getpixel((x, y))
-                    row.append((r << 16) + (g << 8) + b)
+                    color_int = (r << 16) + (g << 8) + b
+                    if color_int < 10:
+                        color_int = 0
+                    row.append(color_int)
                 pixel_array.append(row)
 
             frames.append({"type": "pixel", "content": pixel_array})
