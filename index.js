@@ -89,7 +89,7 @@ function renderTalkingFrame(talking) {
     if (!row) continue;
     for (let sx = 0; sx < tw && sx < row.length; sx++) {
       const color = row[sx];
-      if (color === 0) continue;
+      if (color < 10) continue;
       const cx = ox + sx;
       const cy = oy + sy;
       if (cx >= 0 && cx < 48 && cy >= 0 && cy < 48) {
@@ -446,15 +446,9 @@ async function handleMCP(request, env, corsHeaders) {
               }
               const pixels = await renderTextToPixels(content, env, fgColor);
               if (pixels) {
-                let talkAsset = await env.DISPLAY_KV.get("asset:clawd_talk");
-                if (!talkAsset) {
-                  const talkUrl = "https://raw.githubusercontent.com/wenwen1206/atoms3r-companion/main/assets/pixels/anim_clawd_talk.json";
-                  const talkRes = await fetch(talkUrl);
-                  if (talkRes.ok) {
-                    talkAsset = await talkRes.text();
-                    await env.DISPLAY_KV.put("asset:clawd_talk", talkAsset);
-                  }
-                }
+                const talkUrl = "https://raw.githubusercontent.com/wenwen1206/atoms3r-companion/main/assets/pixels/anim_clawd_talk.json";
+                const talkRes = await fetch(talkUrl);
+                let talkAsset = talkRes.ok ? await talkRes.text() : null;
                 if (talkAsset) {
                   const talkData = JSON.parse(talkAsset);
                   const talkFrames = (talkData.frames || []).map(f => f.content);
