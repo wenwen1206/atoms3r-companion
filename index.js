@@ -64,6 +64,43 @@ function renderRoamingFrame(roaming) {
   return canvas;
 }
 
+function renderTalkingFrame(talking) {
+  const textPixels = talking.text_pixels;
+  const talkFrames = talking.talk_frames;
+  const tw = talking.talk_w || 32;
+  const th = talking.talk_h || 32;
+
+  const canvas = [];
+  for (let y = 0; y < 48; y++) {
+    const row = [];
+    for (let x = 0; x < 48; x++) {
+      row.push(textPixels[y] ? (textPixels[y][x] || 0) : 0);
+    }
+    canvas.push(row);
+  }
+
+  const idx = Math.floor(Date.now() / 500) % talkFrames.length;
+  const sprite = talkFrames[idx];
+  const ox = 48 - tw;
+  const oy = 48 - th;
+
+  for (let sy = 0; sy < th && sy < sprite.length; sy++) {
+    const row = sprite[sy];
+    if (!row) continue;
+    for (let sx = 0; sx < tw && sx < row.length; sx++) {
+      const color = row[sx];
+      if (color === 0) continue;
+      const cx = ox + sx;
+      const cy = oy + sy;
+      if (cx >= 0 && cx < 48 && cy >= 0 && cy < 48) {
+        canvas[cy][cx] = color;
+      }
+    }
+  }
+
+  return canvas;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -96,6 +133,12 @@ export default {
       }
       if (parsed.type === "roaming" && parsed.sprites) {
         const frame = renderRoamingFrame(parsed);
+        return new Response(JSON.stringify({ type: "pixel", content: frame }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+      if (parsed.type === "talking" && parsed.text_pixels && parsed.talk_frames) {
+        const frame = renderTalkingFrame(parsed);
         return new Response(JSON.stringify({ type: "pixel", content: frame }), {
           headers: { "Content-Type": "application/json", ...corsHeaders }
         });
@@ -372,6 +415,20 @@ async function handleMCP(request, env, corsHeaders) {
                   },
                   required: ["raw_url"]
                 }
+              },
+              {
+                name: "play_repo_asset",
+                description: "用檔名直接播放 repo 裡 assets/pixels/ 的素材。不用給完整 URL，只要給檔名（不含 .json）就好。支援 pixel、animation、roaming 格式。",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    name: {
+                      type: "string",
+                      description: "素材檔名（不含 .json），例如 anim_clawd_talk、roaming_clawd"
+                    }
+                  },
+                  required: ["name"]
+                }
               }
             ]
           };
@@ -389,8 +446,21 @@ async function handleMCP(request, env, corsHeaders) {
               }
               const pixels = await renderTextToPixels(content, env, fgColor);
               if (pixels) {
-                const payload = { type: "pixel", content: pixels };
-                await env.DISPLAY_KV.put("current_display", JSON.stringify(payload));
+                const talkAsset = await env.DISPLAY_KV.get("asset:clawd_talk");
+                if (talkAsset) {
+                  const talkData = JSON.parse(talkAsset);
+                  const talkFrames = (talkData.frames || []).map(f => f.content);
+                  const payload = {
+                    type: "talking",
+                    text_pixels: pixels,
+                    talk_frames: talkFrames,
+                    talk_w: 32,
+                    talk_h: 32,
+                  };
+                  await env.DISPLAY_KV.put("current_display", JSON.stringify(payload));
+                } else {
+                  await env.DISPLAY_KV.put("current_display", JSON.stringify({ type: "pixel", content: pixels }));
+                }
                 result = {
                   content: [{ type: "text", text: `已將「${content}」渲染成點陣圖並推送到螢幕！` }]
                 };
@@ -483,6 +553,26 @@ async function handleMCP(request, env, corsHeaders) {
             const desc = isRoaming ? "漫步模式" : isAnimation ? `動畫（${assetData.frames.length} 幀）` : "圖片";
             result = {
               content: [{ type: "text", text: `成功從 GitHub 抓取${desc}並推送到螢幕上！` }]
+            };
+          } else if (params.name === "play_repo_asset") {
+            const assetName = params.arguments.name;
+            const rawUrl = `https://raw.githubusercontent.com/wenwen1206/atoms3r-companion/main/assets/pixels/${assetName}.json`;
+            const fetchRes = await fetch(rawUrl);
+            if (!fetchRes.ok) {
+              result = { content: [{ type: "text", text: `找不到素材「${assetName}」（HTTP ${fetchRes.status}）。確認檔案有推到 main 上的 assets/pixels/ 嗎？` }] };
+              break;
+            }
+            const assetData = await fetchRes.json();
+            const isAnimation = assetData.type === "animation" && Array.isArray(assetData.frames);
+            const isRoaming = assetData.type === "roaming" && assetData.sprites;
+            if (!assetData.type || (!assetData.content && !isAnimation && !isRoaming)) {
+              result = { content: [{ type: "text", text: `「${assetName}」的 JSON 格式不對。` }] };
+              break;
+            }
+            await env.DISPLAY_KV.put("current_display", JSON.stringify(assetData));
+            const desc = isRoaming ? "漫步模式" : isAnimation ? `動畫（${assetData.frames.length} 幀）` : "圖片";
+            result = {
+              content: [{ type: "text", text: `正在播放「${assetName}」${desc}！` }]
             };
           } else {
             result = { error: `未知的工具: ${params.name}` };
