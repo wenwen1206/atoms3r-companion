@@ -164,21 +164,54 @@ def convert_gif_to_talk_json(gif_path, output_name, target_size=16, max_frames=8
     print(f"✓ 講話動畫已產出: {out_path} ({len(frames)} 幀, {target_size}x{target_size})")
 
 
+ANCHOR_GREEN = (0, 255, 0)   # 頭頂錨點
+ANCHOR_RED = (255, 0, 0)     # 手的錨點
+ANCHOR_TOLERANCE = 30
+
+
+def is_anchor_color(r, g, b, target):
+    return (abs(r - target[0]) < ANCHOR_TOLERANCE and
+            abs(g - target[1]) < ANCHOR_TOLERANCE and
+            abs(b - target[2]) < ANCHOR_TOLERANCE)
+
+
+def extract_anchors_and_clean(frame_img, w, h):
+    """偵測錨點定位色，回傳座標並把定位像素擦成黑色"""
+    anchors = {}
+    for y in range(h):
+        for x in range(w):
+            r, g, b = frame_img.getpixel((x, y))
+            if is_anchor_color(r, g, b, ANCHOR_GREEN):
+                anchors["head"] = {"x": x, "y": y}
+                frame_img.putpixel((x, y), (0, 0, 0))
+            elif is_anchor_color(r, g, b, ANCHOR_RED):
+                anchors["hand"] = {"x": x, "y": y}
+                frame_img.putpixel((x, y), (0, 0, 0))
+    return anchors
+
+
 def convert_gif_to_roaming_json(gif_path, output_name):
-    """將 GIF 轉成 roaming 格式：幀0=正面站立，幀1-3=走路"""
+    """將 GIF 轉成 roaming 格式：幀0=正面站立，幀1-3=走路，自動偵測錨點"""
     gif = Image.open(gif_path)
     all_frames = []
+    all_anchors = []
 
     try:
         while True:
             frame = gif.copy().convert("RGB")
             w, h = frame.size
+            anchors = extract_anchors_and_clean(frame, w, h)
+            all_anchors.append(anchors)
+
             pixel_array = []
             for y in range(h):
                 row = []
                 for x in range(w):
                     r, g, b = frame.getpixel((x, y))
-                    row.append((r << 16) + (g << 8) + b)
+                    color_int = (r << 16) + (g << 8) + b
+                    if color_int < 10:
+                        color_int = 0
+                    row.append(color_int)
                 pixel_array.append(row)
             all_frames.append(pixel_array)
             gif.seek(gif.tell() + 1)
@@ -196,13 +229,22 @@ def convert_gif_to_roaming_json(gif_path, output_name):
         "sprites": {
             "stand": all_frames[0],
             "walk": all_frames[1:]
+        },
+        "anchors": {
+            "stand": all_anchors[0],
+            "walk": all_anchors[1:]
         }
     }
 
     out_path = f"assets/pixels/{output_name}.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(roaming, f)
-    print(f"✓ Roaming 素材已產出: {out_path} (站立+{len(all_frames)-1}幀走路, {w}x{h})")
+
+    anchor_info = []
+    for name, a in all_anchors[0].items():
+        anchor_info.append(f"{name}({a['x']},{a['y']})")
+    anchor_str = ", ".join(anchor_info) if anchor_info else "無錨點"
+    print(f"✓ Roaming 素材已產出: {out_path} (站立+{len(all_frames)-1}幀走路, {w}x{h}, 錨點: {anchor_str})")
 
 
 # === 使用範例 ===

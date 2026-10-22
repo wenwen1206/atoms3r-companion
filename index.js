@@ -20,30 +20,31 @@ const ROAMING_PATTERN = [
   [8, -1, 0], [8, -1, 0], [8, -1, 0],
 ];
 
-function renderRoamingFrame(roaming) {
+function renderRoamingFrame(roaming, equips) {
   const sw = roaming.sprite_w || 32;
   const sh = roaming.sprite_h || 32;
   const stand = roaming.sprites.stand;
   const walkFrames = roaming.sprites.walk || [];
+  const anchorsData = roaming.anchors || {};
 
   const tick = Math.floor(Date.now() / 1000) % ROAMING_PATTERN.length;
   const [xOff, frameIdx, facing] = ROAMING_PATTERN[tick];
 
-  // 選幀：-1 是站立，否則是走路幀
-  let sprite;
+  let sprite, anchors;
   if (frameIdx < 0 || walkFrames.length === 0) {
     sprite = stand;
+    anchors = anchorsData.stand || {};
   } else {
-    sprite = walkFrames[frameIdx % walkFrames.length];
+    const wi = frameIdx % walkFrames.length;
+    sprite = walkFrames[wi];
+    anchors = (anchorsData.walk || [])[wi] || {};
   }
 
-  // 48x48 黑色畫布
   const canvas = [];
   for (let y = 0; y < 48; y++) {
     canvas.push(new Array(48).fill(0));
   }
 
-  // y 固定底部對齊
   const yOff = 48 - sh;
 
   for (let sy = 0; sy < sh && sy < sprite.length; sy++) {
@@ -51,12 +52,38 @@ function renderRoamingFrame(roaming) {
     if (!row) continue;
     for (let sx = 0; sx < sw && sx < row.length; sx++) {
       const color = row[sx];
-      if (color === 0) continue; // 黑色=透明
+      if (color === 0) continue;
       const srcX = facing === 1 ? (sw - 1 - sx) : sx;
       const cx = xOff + srcX;
       const cy = yOff + sy;
       if (cx >= 0 && cx < 48 && cy >= 0 && cy < 48) {
         canvas[cy][cx] = color;
+      }
+    }
+  }
+
+  if (equips) {
+    for (const [slot, item] of Object.entries(equips)) {
+      const anchor = anchors[slot];
+      if (!anchor || !item.pixels) continue;
+      const iw = item.w || item.pixels[0].length;
+      const ih = item.h || item.pixels.length;
+      const ax = facing === 1 ? (sw - 1 - anchor.x) : anchor.x;
+      const itemX = xOff + ax - Math.floor(iw / 2);
+      const itemY = yOff + anchor.y - ih;
+
+      for (let iy = 0; iy < ih && iy < item.pixels.length; iy++) {
+        const row = item.pixels[iy];
+        if (!row) continue;
+        for (let ix = 0; ix < iw && ix < row.length; ix++) {
+          const color = row[ix];
+          if (color < 10) continue;
+          const px = facing === 1 ? (itemX + iw - 1 - ix) : (itemX + ix);
+          const py = itemY + iy;
+          if (px >= 0 && px < 48 && py >= 0 && py < 48) {
+            canvas[py][px] = color;
+          }
+        }
       }
     }
   }
@@ -132,7 +159,12 @@ export default {
         });
       }
       if (parsed.type === "roaming" && parsed.sprites) {
-        const frame = renderRoamingFrame(parsed);
+        const equipHead = await env.DISPLAY_KV.get("equip:head");
+        const equipHand = await env.DISPLAY_KV.get("equip:hand");
+        const equips = {};
+        if (equipHead) equips.head = JSON.parse(equipHead);
+        if (equipHand) equips.hand = JSON.parse(equipHand);
+        const frame = renderRoamingFrame(parsed, equips);
         return new Response(JSON.stringify({ type: "pixel", content: frame }), {
           headers: { "Content-Type": "application/json", ...corsHeaders }
         });
@@ -429,6 +461,44 @@ async function handleMCP(request, env, corsHeaders) {
                   },
                   required: ["name"]
                 }
+              },
+              {
+                name: "equip_item",
+                description: "讓膽膽裝備物品到錨點上（頭頂或手上）。可以用 repo 裡的素材名稱，或直接傳像素資料。裝備後膽膽漫步時會帶著物品走。",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    slot: {
+                      type: "string",
+                      enum: ["head", "hand"],
+                      description: "裝備位置：head（頭頂）或 hand（手上）"
+                    },
+                    asset_name: {
+                      type: "string",
+                      description: "repo 裡 assets/pixels/ 的素材檔名（不含 .json）。會自動從 GitHub 抓取像素資料。"
+                    },
+                    pixels: {
+                      type: "array",
+                      description: "直接傳入像素陣列（2D 色碼陣列）。如果同時給了 asset_name，優先用 asset_name。"
+                    }
+                  },
+                  required: ["slot"]
+                }
+              },
+              {
+                name: "unequip_item",
+                description: "卸下膽膽身上的裝備。可以指定位置，或一次全部卸下。",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    slot: {
+                      type: "string",
+                      enum: ["head", "hand", "all"],
+                      description: "要卸下的位置：head、hand 或 all（全部卸下）"
+                    }
+                  },
+                  required: ["slot"]
+                }
               }
             ]
           };
@@ -576,6 +646,64 @@ async function handleMCP(request, env, corsHeaders) {
             result = {
               content: [{ type: "text", text: `正在播放「${assetName}」${desc}！` }]
             };
+          } else if (params.name === "equip_item") {
+            const { slot, asset_name, pixels } = params.arguments;
+            if (slot !== "head" && slot !== "hand") {
+              result = { content: [{ type: "text", text: "slot 只能是 head 或 hand。" }] };
+              break;
+            }
+            let itemPixels = null;
+            let itemW = 0, itemH = 0;
+            let source = "";
+
+            if (asset_name) {
+              const rawUrl = `https://raw.githubusercontent.com/wenwen1206/atoms3r-companion/main/assets/pixels/${asset_name}.json`;
+              const fetchRes = await fetch(rawUrl);
+              if (!fetchRes.ok) {
+                result = { content: [{ type: "text", text: `找不到素材「${asset_name}」（HTTP ${fetchRes.status}）` }] };
+                break;
+              }
+              const assetData = await fetchRes.json();
+              if (assetData.type === "pixel" && assetData.content) {
+                itemPixels = assetData.content;
+              } else if (assetData.content) {
+                itemPixels = assetData.content;
+              } else {
+                result = { content: [{ type: "text", text: `「${asset_name}」不是可裝備的格式（需要 pixel 類型的素材）` }] };
+                break;
+              }
+              itemH = itemPixels.length;
+              itemW = itemPixels[0] ? itemPixels[0].length : 0;
+              source = asset_name;
+            } else if (pixels && Array.isArray(pixels)) {
+              itemPixels = pixels;
+              itemH = pixels.length;
+              itemW = pixels[0] ? pixels[0].length : 0;
+              source = "自訂像素";
+            } else {
+              result = { content: [{ type: "text", text: "需要提供 asset_name 或 pixels 其中之一。" }] };
+              break;
+            }
+
+            const equipData = { pixels: itemPixels, w: itemW, h: itemH };
+            await env.DISPLAY_KV.put(`equip:${slot}`, JSON.stringify(equipData));
+            const slotName = slot === "head" ? "頭頂" : "手上";
+            result = {
+              content: [{ type: "text", text: `膽膽的${slotName}裝備了「${source}」（${itemW}x${itemH}）！漫步時就能看到了。` }]
+            };
+          } else if (params.name === "unequip_item") {
+            const { slot } = params.arguments;
+            if (slot === "all") {
+              await env.DISPLAY_KV.delete("equip:head");
+              await env.DISPLAY_KV.delete("equip:hand");
+              result = { content: [{ type: "text", text: "膽膽的裝備全部卸下了，輕輕鬆鬆~" }] };
+            } else if (slot === "head" || slot === "hand") {
+              await env.DISPLAY_KV.delete(`equip:${slot}`);
+              const slotName = slot === "head" ? "頭頂" : "手上";
+              result = { content: [{ type: "text", text: `膽膽${slotName}的東西卸下來了。` }] };
+            } else {
+              result = { content: [{ type: "text", text: "slot 只能是 head、hand 或 all。" }] };
+            }
           } else {
             result = { error: `未知的工具: ${params.name}` };
           }
